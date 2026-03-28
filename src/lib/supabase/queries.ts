@@ -164,6 +164,7 @@ export async function uploadMediaFile(
         `Bearer ${session?.access_token ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`
       );
       xhr.setRequestHeader("x-upsert", "true");
+      xhr.setRequestHeader("Content-Type", file.type);
 
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
