@@ -1,5 +1,7 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
 import {
   Monitor,
   ListMusic,
@@ -8,6 +10,7 @@ import {
   Plus,
   Activity,
   Clock,
+  Image,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,148 +22,87 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import {
+  getDashboardStats,
+  getRecentScreens,
+  getRecentActivity,
+  type DashboardStats,
+  type DashboardScreen,
+  type DashboardActivity,
+} from "@/lib/supabase/dashboard-queries";
 
-// -- Placeholder data (will be replaced with Supabase queries) --
+// ---------------------------------------------------------------------------
+// Data hooks
+// ---------------------------------------------------------------------------
 
-const stats = [
-  {
-    label: "Screens Online",
-    value: 8,
-    icon: Monitor,
-    dotColor: "bg-emerald-500",
-    change: "+2 this week",
-  },
-  {
-    label: "Screens Offline",
-    value: 2,
-    icon: Monitor,
-    dotColor: "bg-red-500",
-    change: "1 needs attention",
-  },
-  {
-    label: "Active Playlists",
-    value: 5,
-    icon: ListMusic,
-    dotColor: "bg-primary",
-    change: "3 scheduled",
-  },
-  {
-    label: "Active Announcements",
-    value: 3,
-    icon: Megaphone,
-    dotColor: "bg-amber-500",
-    change: "1 expiring soon",
-  },
-];
+function useDashboardStats() {
+  return useQuery<DashboardStats>({
+    queryKey: ["dashboard-stats"],
+    queryFn: () => {
+      const supabase = createClient();
+      return getDashboardStats(supabase);
+    },
+    refetchInterval: 30_000, // refresh every 30 seconds
+  });
+}
 
-const screens = [
-  {
-    id: "scr-001",
-    name: "Lobby - Tower A",
-    status: "online" as const,
-    playlist: "Morning Rotation",
-    lastHeartbeat: "2 minutes ago",
-  },
-  {
-    id: "scr-002",
-    name: "Lobby - Tower B",
-    status: "online" as const,
-    playlist: "Corporate Reel",
-    lastHeartbeat: "1 minute ago",
-  },
-  {
-    id: "scr-003",
-    name: "Elevator #3 - Floor 12",
-    status: "offline" as const,
-    playlist: "Evening Playlist",
-    lastHeartbeat: "3 hours ago",
-  },
-  {
-    id: "scr-004",
-    name: "Elevator #7 - Floor 5",
-    status: "online" as const,
-    playlist: "Morning Rotation",
-    lastHeartbeat: "30 seconds ago",
-  },
-  {
-    id: "scr-005",
-    name: "Parking Garage - B1",
-    status: "online" as const,
-    playlist: "Safety Notices",
-    lastHeartbeat: "45 seconds ago",
-  },
-  {
-    id: "scr-006",
-    name: "Conference Room Lobby",
-    status: "offline" as const,
-    playlist: "Welcome Loop",
-    lastHeartbeat: "1 day ago",
-  },
-];
+function useDashboardScreens() {
+  return useQuery<DashboardScreen[]>({
+    queryKey: ["dashboard-screens"],
+    queryFn: () => {
+      const supabase = createClient();
+      return getRecentScreens(supabase);
+    },
+    refetchInterval: 30_000,
+  });
+}
 
-const recentActivity = [
-  {
-    id: 1,
-    action: "Playlist updated",
-    detail: '"Morning Rotation" was modified',
-    time: "10 minutes ago",
-  },
-  {
-    id: 2,
-    action: "Screen connected",
-    detail: '"Lobby - Tower A" came online',
-    time: "25 minutes ago",
-  },
-  {
-    id: 3,
-    action: "Media uploaded",
-    detail: "3 new images added to library",
-    time: "1 hour ago",
-  },
-  {
-    id: 4,
-    action: "Announcement created",
-    detail: '"Fire Drill Notice" published',
-    time: "2 hours ago",
-  },
-  {
-    id: 5,
-    action: "Screen disconnected",
-    detail: '"Conference Room Lobby" went offline',
-    time: "1 day ago",
-  },
-];
+function useDashboardActivity() {
+  return useQuery<DashboardActivity[]>({
+    queryKey: ["dashboard-activity"],
+    queryFn: () => {
+      const supabase = createClient();
+      return getRecentActivity(supabase);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatHeartbeat(dateStr: string | null): string {
+  if (!dateStr) return "Never";
+  try {
+    return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
+  } catch {
+    return "Unknown";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { data: stats, isLoading: statsLoading } = useDashboardStats();
+  const { data: screens = [], isLoading: screensLoading } =
+    useDashboardScreens();
+  const { data: activity = [], isLoading: activityLoading } =
+    useDashboardActivity();
 
   return (
     <div className="space-y-6">
       {/* Stats cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardDescription className="text-sm font-medium">
-                {stat.label}
-              </CardDescription>
-              <stat.icon className="size-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block size-2 rounded-full ${stat.dotColor}`}
-                />
-                <span className="text-2xl font-bold">{stat.value}</span>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {stat.change}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {statsLoading ? (
+        <StatsGridSkeleton />
+      ) : stats ? (
+        <StatsGrid stats={stats} />
+      ) : null}
 
       {/* Screen status + Recent activity */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -185,65 +127,12 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {screens.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Monitor className="mb-3 size-10 text-muted-foreground/40" />
-                  <p className="text-sm font-medium text-muted-foreground">
-                    No screens paired yet
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground/70">
-                    Pair a screen to start displaying content.
-                  </p>
-                  <Button
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => router.push("/screens")}
-                  >
-                    <Plus className="mr-1.5 size-3.5" />
-                    Pair Screen
-                  </Button>
-                </div>
+              {screensLoading ? (
+                <ScreenGridSkeleton />
+              ) : screens.length === 0 ? (
+                <ScreenEmptyState onPair={() => router.push("/screens")} />
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {screens.map((screen) => (
-                    <div
-                      key={screen.id}
-                      className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
-                    >
-                      <div className="mt-0.5">
-                        <Monitor className="size-4 text-muted-foreground" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium">
-                            {screen.name}
-                          </span>
-                          <Badge
-                            variant={
-                              screen.status === "online"
-                                ? "default"
-                                : "secondary"
-                            }
-                            className={
-                              screen.status === "online"
-                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                : "bg-red-500/10 text-red-600 dark:text-red-400"
-                            }
-                          >
-                            {screen.status}
-                          </Badge>
-                        </div>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {screen.playlist}
-                        </p>
-                        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/70">
-                          <Clock className="size-3" />
-                          {screen.lastHeartbeat}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <ScreenGrid screens={screens} />
               )}
             </CardContent>
           </Card>
@@ -257,31 +146,21 @@ export default function DashboardPage() {
               <CardDescription>Latest actions and events</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-0">
-                {recentActivity.map((item, i) => (
-                  <div key={item.id}>
-                    <div className="flex items-start gap-3 py-2.5">
-                      <div className="mt-1">
-                        <Activity className="size-3.5 text-muted-foreground/50" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium leading-tight">
-                          {item.action}
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {item.detail}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground/60">
-                          {item.time}
-                        </p>
-                      </div>
-                    </div>
-                    {i < recentActivity.length - 1 && (
-                      <Separator className="my-0" />
-                    )}
-                  </div>
-                ))}
-              </div>
+              {activityLoading ? (
+                <ActivitySkeleton />
+              ) : activity.length === 0 ? (
+                <div className="flex flex-col items-center py-8 text-center">
+                  <Activity className="mb-2 size-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">
+                    No recent activity
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground/70">
+                    Activity will appear here as you manage content.
+                  </p>
+                </div>
+              ) : (
+                <ActivityList items={activity} />
+              )}
             </CardContent>
           </Card>
         </div>
@@ -323,6 +202,221 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Subcomponents
+// ---------------------------------------------------------------------------
+
+function StatsGrid({ stats }: { stats: DashboardStats }) {
+  const items = [
+    {
+      label: "Screens Online",
+      value: stats.screensOnline,
+      icon: Monitor,
+      dotColor: "bg-emerald-500",
+      sub:
+        stats.screensOnline + stats.screensOffline > 0
+          ? `of ${stats.screensOnline + stats.screensOffline} total`
+          : "No screens registered",
+    },
+    {
+      label: "Screens Offline",
+      value: stats.screensOffline,
+      icon: Monitor,
+      dotColor: "bg-red-500",
+      sub:
+        stats.screensOffline > 0
+          ? `${stats.screensOffline} need${stats.screensOffline === 1 ? "s" : ""} attention`
+          : "All screens online",
+    },
+    {
+      label: "Active Playlists",
+      value: stats.activePlaylists,
+      icon: ListMusic,
+      dotColor: "bg-primary",
+      sub: stats.activePlaylists === 0 ? "No active playlists" : "Currently active",
+    },
+    {
+      label: "Active Announcements",
+      value: stats.activeAnnouncements,
+      icon: Megaphone,
+      dotColor: "bg-amber-500",
+      sub:
+        stats.activeAnnouncements === 0
+          ? "No active announcements"
+          : "Currently broadcasting",
+    },
+  ];
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {items.map((stat) => (
+        <Card key={stat.label}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardDescription className="text-sm font-medium">
+              {stat.label}
+            </CardDescription>
+            <stat.icon className="size-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block size-2 rounded-full ${stat.dotColor}`}
+              />
+              <span className="text-2xl font-bold">{stat.value}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{stat.sub}</p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function StatsGridSkeleton() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="size-4" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="mt-2 h-3 w-20" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function ScreenGrid({ screens }: { screens: DashboardScreen[] }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {screens.map((screen) => (
+        <div
+          key={screen.id}
+          className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
+        >
+          <div className="mt-0.5">
+            <Monitor className="size-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-medium">
+                {screen.name}
+              </span>
+              <Badge
+                variant={screen.is_online ? "default" : "secondary"}
+                className={
+                  screen.is_online
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    : "bg-red-500/10 text-red-600 dark:text-red-400"
+                }
+              >
+                {screen.is_online ? "online" : "offline"}
+              </Badge>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {screen.playlist_name ?? "No playlist assigned"}
+            </p>
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/70">
+              <Clock className="size-3" />
+              {formatHeartbeat(screen.last_heartbeat_at)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScreenEmptyState({ onPair }: { onPair: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <Monitor className="mb-3 size-10 text-muted-foreground/40" />
+      <p className="text-sm font-medium text-muted-foreground">
+        No screens paired yet
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground/70">
+        Pair a screen to start displaying content.
+      </p>
+      <Button size="sm" className="mt-4" onClick={onPair}>
+        <Plus className="mr-1.5 size-3.5" />
+        Pair Screen
+      </Button>
+    </div>
+  );
+}
+
+function ScreenGridSkeleton() {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex items-start gap-3 rounded-lg border p-3">
+          <Skeleton className="mt-0.5 size-4" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ActivityList({ items }: { items: DashboardActivity[] }) {
+  return (
+    <div className="space-y-0">
+      {items.map((item, i) => (
+        <div key={item.id}>
+          <div className="flex items-start gap-3 py-2.5">
+            <div className="mt-1">
+              {item.type === "announcement" ? (
+                <Megaphone className="size-3.5 text-amber-500/70" />
+              ) : (
+                <Image className="size-3.5 text-blue-500/70" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium leading-tight">{item.title}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {item.detail}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground/60">
+                {formatHeartbeat(item.created_at)}
+              </p>
+            </div>
+          </div>
+          {i < items.length - 1 && <Separator className="my-0" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ActivitySkeleton() {
+  return (
+    <div className="space-y-0">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i}>
+          <div className="flex items-start gap-3 py-2.5">
+            <Skeleton className="mt-1 size-3.5" />
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          </div>
+          {i < 4 && <Separator className="my-0" />}
+        </div>
+      ))}
     </div>
   );
 }
