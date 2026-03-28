@@ -33,13 +33,28 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const pathname = request.nextUrl.pathname;
+
+  // Public routes that don't require authentication
+  const isAuthRoute =
+    pathname.startsWith("/login") || pathname.startsWith("/register");
+  const isCallbackRoute = pathname.startsWith("/auth/callback");
+  const isApiRoute = pathname.startsWith("/api");
+
+  // Skip protection for callback and API routes
+  if (isCallbackRoute || isApiRoute) {
+    return supabaseResponse;
+  }
+
+  // Redirect authenticated users away from auth pages to dashboard
+  if (user && isAuthRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/media";
+    return NextResponse.redirect(url);
+  }
+
   // Redirect unauthenticated users to login for protected routes
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/register") &&
-    !request.nextUrl.pathname.startsWith("/api")
-  ) {
+  if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
