@@ -97,13 +97,13 @@ export function PlaylistCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onSelect={() => onEdit(playlist.id)}
+                onClick={() => onEdit(playlist.id)}
               >
                 <Edit className="mr-2 size-3.5" />
                 Edit
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => onDuplicate(playlist.id)}
+                onClick={() => onDuplicate(playlist.id)}
               >
                 <Copy className="mr-2 size-3.5" />
                 Duplicate
@@ -111,7 +111,7 @@ export function PlaylistCard({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onSelect={() => onDelete(playlist.id)}
+                onClick={() => onDelete(playlist.id)}
               >
                 <Trash2 className="mr-2 size-3.5" />
                 Delete

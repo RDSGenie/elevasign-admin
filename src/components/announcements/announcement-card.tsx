@@ -111,12 +111,12 @@ export function AnnouncementCard({
               <MoreVertical className="size-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onEdit(announcement)}>
+              <DropdownMenuItem onClick={() => onEdit(announcement)}>
                 <Edit className="mr-2 size-3.5" />
                 Edit
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() =>
+                onClick={() =>
                   onToggleActive(announcement.id, !announcement.is_active)
                 }
               >
@@ -135,7 +135,7 @@ export function AnnouncementCard({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onSelect={() => onDelete(announcement.id)}
+                onClick={() => onDelete(announcement.id)}
               >
                 <Trash2 className="mr-2 size-3.5" />
                 Delete

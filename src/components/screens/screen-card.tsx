@@ -120,14 +120,14 @@ export function ScreenCard({ screen, onEdit, onDelete }: ScreenCardProps) {
               <MoreVertical className="size-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onEdit(screen.id)}>
+              <DropdownMenuItem onClick={() => onEdit(screen.id)}>
                 <Edit className="mr-2 size-3.5" />
                 View Details
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onSelect={() => onDelete(screen.id)}
+                onClick={() => onDelete(screen.id)}
               >
                 <Trash2 className="mr-2 size-3.5" />
                 Delete
