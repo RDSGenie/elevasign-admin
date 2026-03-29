@@ -11,7 +11,20 @@ import {
   Activity,
   Clock,
   Image,
+  Wifi,
+  HardDrive,
 } from "lucide-react";
+import {
+  RadialBarChart,
+  RadialBar,
+  ResponsiveContainer,
+  PolarAngleAxis,
+  BarChart,
+  Bar,
+  XAxis,
+  Cell,
+  Tooltip,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,9 +42,11 @@ import {
   getDashboardStats,
   getRecentScreens,
   getRecentActivity,
+  getFleetHealth,
   type DashboardStats,
   type DashboardScreen,
   type DashboardActivity,
+  type FleetHealth,
 } from "@/lib/supabase/dashboard-queries";
 
 // ---------------------------------------------------------------------------
@@ -70,6 +85,17 @@ function useDashboardActivity() {
   });
 }
 
+function useFleetHealth() {
+  return useQuery<FleetHealth>({
+    queryKey: ["fleet-health"],
+    queryFn: () => {
+      const supabase = createClient();
+      return getFleetHealth(supabase);
+    },
+    refetchInterval: 60_000,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -94,6 +120,7 @@ export default function DashboardPage() {
     useDashboardScreens();
   const { data: activity = [], isLoading: activityLoading } =
     useDashboardActivity();
+  const { data: fleet } = useFleetHealth();
 
   return (
     <div className="space-y-6">
@@ -103,6 +130,11 @@ export default function DashboardPage() {
       ) : stats ? (
         <StatsGrid stats={stats} />
       ) : null}
+
+      {/* Fleet Health — only shown when there are screens with heartbeat data */}
+      {fleet && fleet.screens.length > 0 && (
+        <FleetHealthCard fleet={fleet} onViewScreens={() => router.push("/screens")} />
+      )}
 
       {/* Screen status + Recent activity */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -418,5 +450,159 @@ function ActivitySkeleton() {
         </div>
       ))}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Fleet Health Card
+// ---------------------------------------------------------------------------
+
+function FleetHealthCard({
+  fleet,
+  onViewScreens,
+}: {
+  fleet: FleetHealth;
+  onViewScreens: () => void;
+}) {
+  const onlineCount = fleet.screens.filter((s) => s.is_online).length;
+  const total = fleet.screens.length;
+  const onlinePct = total > 0 ? Math.round((onlineCount / total) * 100) : 0;
+
+  // Bar chart data: one bar per screen showing free storage
+  const storageData = fleet.screens
+    .filter((s) => s.storage_total_mb !== null)
+    .map((s) => ({
+      name: s.name.length > 10 ? s.name.slice(0, 10) + "…" : s.name,
+      free: s.storage_free_mb ?? 0,
+      used: (s.storage_total_mb ?? 0) - (s.storage_free_mb ?? 0),
+      isOnline: s.is_online,
+    }));
+
+  // Radial gauge data for online %
+  const gaugeData = [{ value: onlinePct }];
+
+  const usedStoragePct =
+    fleet.totalStorageMb > 0
+      ? Math.round(((fleet.totalStorageMb - fleet.freeStorageMb) / fleet.totalStorageMb) * 100)
+      : 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Fleet Health</CardTitle>
+            <CardDescription>
+              Live telemetry from all paired devices
+            </CardDescription>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onViewScreens}>
+            View screens
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-6 sm:grid-cols-3">
+          {/* Online gauge */}
+          <div className="flex flex-col items-center">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Screens Online
+            </p>
+            <div className="relative h-28 w-28">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadialBarChart
+                  innerRadius="70%"
+                  outerRadius="100%"
+                  data={gaugeData}
+                  startAngle={90}
+                  endAngle={-270}
+                >
+                  <PolarAngleAxis
+                    type="number"
+                    domain={[0, 100]}
+                    angleAxisId={0}
+                    tick={false}
+                  />
+                  <RadialBar
+                    background
+                    dataKey="value"
+                    cornerRadius={8}
+                    fill="hsl(var(--primary))"
+                    angleAxisId={0}
+                  />
+                </RadialBarChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold">{onlinePct}%</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {onlineCount}/{total}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Storage breakdown per screen */}
+          {storageData.length > 0 ? (
+            <div className="sm:col-span-2">
+              <div className="mb-2 flex items-center gap-1.5">
+                <HardDrive className="size-3.5 text-muted-foreground" />
+                <p className="text-xs font-medium text-muted-foreground">
+                  Storage per screen — {usedStoragePct}% used fleet-wide
+                </p>
+              </div>
+              <ResponsiveContainer width="100%" height={100}>
+                <BarChart data={storageData} barSize={16} barGap={4}>
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={{ fontSize: 11 }}
+                    formatter={(v, name) => [
+                      `${v} MB`,
+                      name === "free" ? "Free" : "Used",
+                    ]}
+                  />
+                  <Bar dataKey="used" stackId="a" fill="hsl(var(--primary) / 0.3)" radius={0}>
+                    {storageData.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={entry.isOnline ? "hsl(var(--primary) / 0.35)" : "hsl(var(--muted-foreground) / 0.2)"}
+                      />
+                    ))}
+                  </Bar>
+                  <Bar dataKey="free" stackId="a" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]}>
+                    {storageData.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={entry.isOnline ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.4)"}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            /* WiFi summary if no storage data */
+            <div className="flex flex-col justify-center sm:col-span-2 gap-3">
+              <div className="flex items-center gap-2">
+                <Wifi className="size-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  Avg WiFi signal:{" "}
+                  <span className="font-semibold text-foreground">
+                    {fleet.avgWifiDbm !== null ? `${fleet.avgWifiDbm} dBm` : "No data yet"}
+                  </span>
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Storage and WiFi charts will appear here once devices start sending heartbeats.
+              </p>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

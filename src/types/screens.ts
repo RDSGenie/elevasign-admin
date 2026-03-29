@@ -16,6 +16,7 @@ export type LayoutTemplate =
 export interface Screen {
   id: string;
   name: string;
+  location: string | null;
   pairing_code: string | null;
   device_id: string | null;
   fcm_token: string | null;
@@ -66,6 +67,7 @@ export interface CreateScreenData {
 /** Payload for updating an existing screen */
 export interface UpdateScreenData {
   name?: string;
+  location?: string | null;
   orientation?: ScreenOrientation;
   layout_template?: LayoutTemplate;
   status?: string;

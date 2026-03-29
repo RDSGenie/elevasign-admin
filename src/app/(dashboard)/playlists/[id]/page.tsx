@@ -29,6 +29,7 @@ import {
   Clock,
   Play,
   Loader2,
+  MonitorPlay,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,7 @@ import {
 } from "@/lib/supabase/playlist-queries";
 import { PlaylistItemRow } from "@/components/playlists/playlist-item";
 import { MediaBrowser } from "@/components/playlists/media-browser";
+import { PlaylistPreviewDialog } from "@/components/playlists/playlist-preview-dialog";
 import type {
   TransitionType,
   PlaylistItemWithMedia,
@@ -353,6 +355,8 @@ export default function PlaylistEditorPage({
   const isSaving =
     saveSettingsMutation.isPending || saveOrderMutation.isPending;
 
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -423,6 +427,15 @@ export default function PlaylistEditorPage({
           </span>
           <Button
             size="sm"
+            variant="outline"
+            onClick={() => setPreviewOpen(true)}
+            disabled={items.length === 0}
+          >
+            <MonitorPlay className="size-3.5" data-icon="inline-start" />
+            Preview
+          </Button>
+          <Button
+            size="sm"
             onClick={handleSaveAll}
             disabled={isSaving}
           >
@@ -488,9 +501,9 @@ export default function PlaylistEditorPage({
                   min={100}
                   max={1000}
                   step={50}
-                  value={effectiveTransitionDuration}
+                  value={[effectiveTransitionDuration]}
                   onValueChange={(val) =>
-                    setTransitionDuration(val as number)
+                    setTransitionDuration(val[0])
                   }
                 />
               </div>
@@ -557,6 +570,13 @@ export default function PlaylistEditorPage({
           />
         </div>
       </div>
+
+      <PlaylistPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        playlistName={effectiveName}
+        items={items}
+      />
     </div>
   );
 }

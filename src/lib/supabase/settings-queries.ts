@@ -22,11 +22,39 @@ export interface UpdateProfileData {
   avatar_url?: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Building branding types
+// ---------------------------------------------------------------------------
+
+export interface BuildingSettings {
+  id: string;
+  building_name: string;
+  tagline: string | null;
+  logo_url: string | null;
+  primary_color: string;
+  updated_at: string;
+}
+
+export interface UpdateBuildingSettings {
+  building_name?: string;
+  tagline?: string | null;
+  logo_url?: string | null;
+  primary_color?: string;
+}
+
+export interface StorageByType {
+  type: "image" | "video" | "document" | "other";
+  label: string;
+  bytes: number;
+  count: number;
+}
+
 export interface SystemStats {
   totalScreens: number;
   onlineScreens: number;
   totalMedia: number;
   totalStorageBytes: number;
+  storageByType: StorageByType[];
   totalPlaylists: number;
   totalAnnouncements: number;
   totalProfiles: number;
@@ -111,6 +139,57 @@ export async function updateUserRole(
 }
 
 /**
+ * Get the building branding settings (singleton row).
+ */
+export async function getBuildingSettings(
+  supabase: AnySupabaseClient
+): Promise<BuildingSettings | null> {
+  const { data, error } = await supabase
+    .from("building_settings")
+    .select("*")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as BuildingSettings | null;
+}
+
+/**
+ * Upsert building branding settings.
+ */
+export async function updateBuildingSettings(
+  supabase: AnySupabaseClient,
+  settings: UpdateBuildingSettings
+): Promise<BuildingSettings> {
+  // Get current row id first
+  const { data: current } = await supabase
+    .from("building_settings")
+    .select("id")
+    .limit(1)
+    .maybeSingle();
+
+  if (current?.id) {
+    const { data, error } = await supabase
+      .from("building_settings")
+      .update({ ...settings })
+      .eq("id", current.id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as BuildingSettings;
+  } else {
+    // Should not happen (seed in migration), but handle gracefully
+    const { data, error } = await supabase
+      .from("building_settings")
+      .insert({ building_name: "My Building", ...settings })
+      .select()
+      .single();
+    if (error) throw error;
+    return data as BuildingSettings;
+  }
+}
+
+/**
  * Get system-wide statistics for the settings page.
  */
 export async function getSystemStats(
@@ -120,7 +199,7 @@ export async function getSystemStats(
   const [screensRes, mediaRes, playlistsRes, announcementsRes, profilesRes] =
     await Promise.all([
       supabase.from("screens").select("id, is_online", { count: "exact", head: false }),
-      supabase.from("media_items").select("id, file_size_bytes", { count: "exact", head: false }),
+      supabase.from("media_items").select("id, file_type, file_size_bytes", { count: "exact", head: false }),
       supabase.from("playlists").select("id", { count: "exact", head: true }),
       supabase.from("announcements").select("id", { count: "exact", head: true }),
       supabase.from("profiles").select("id", { count: "exact", head: true }),
@@ -144,11 +223,45 @@ export async function getSystemStats(
     0
   );
 
+  // Aggregate storage by category
+  const typeMap: Record<string, { bytes: number; count: number }> = {
+    image: { bytes: 0, count: 0 },
+    video: { bytes: 0, count: 0 },
+    document: { bytes: 0, count: 0 },
+    other: { bytes: 0, count: 0 },
+  };
+  for (const m of media as { file_type: string; file_size_bytes: number }[]) {
+    const cat = m.file_type.startsWith("image/")
+      ? "image"
+      : m.file_type.startsWith("video/")
+      ? "video"
+      : m.file_type === "application/pdf"
+      ? "document"
+      : "other";
+    typeMap[cat].bytes += m.file_size_bytes || 0;
+    typeMap[cat].count += 1;
+  }
+
+  const typeLabels: Record<string, string> = {
+    image: "Images",
+    video: "Videos",
+    document: "Documents",
+    other: "Other",
+  };
+
+  const storageByType: StorageByType[] = (
+    Object.entries(typeMap) as [StorageByType["type"], { bytes: number; count: number }][]
+  )
+    .filter(([, v]) => v.count > 0)
+    .map(([type, v]) => ({ type, label: typeLabels[type], ...v }))
+    .sort((a, b) => b.bytes - a.bytes);
+
   return {
     totalScreens: screensRes.count ?? screens.length,
     onlineScreens,
     totalMedia: mediaRes.count ?? media.length,
     totalStorageBytes,
+    storageByType,
     totalPlaylists: playlistsRes.count ?? 0,
     totalAnnouncements: announcementsRes.count ?? 0,
     totalProfiles: profilesRes.count ?? 0,

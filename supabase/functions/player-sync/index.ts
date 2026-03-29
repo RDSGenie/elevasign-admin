@@ -198,7 +198,18 @@ Deno.serve(async (req) => {
       console.error('Error fetching layout zones:', zonesError)
     }
 
-    // 6. Generate manifest hash
+    // 6. Get latest content version number for this screen
+    const { data: latestVersion } = await supabase
+      .from('content_versions')
+      .select('version_number')
+      .eq('screen_id', screenId)
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const contentVersion = latestVersion?.version_number ?? 0
+
+    // 7. Generate manifest hash
     const manifestContent = JSON.stringify({
       playlist: playlistData,
       announcements: filteredAnnouncements,
@@ -220,13 +231,14 @@ Deno.serve(async (req) => {
       })
       .eq('id', screenId)
 
-    // 7. Return manifest
+    // 8. Return manifest
     return new Response(
       JSON.stringify({
         playlist: playlistData,
         announcements: filteredAnnouncements,
         layout_zones: layoutZones ?? [],
         manifest_hash: manifestHash,
+        content_version: contentVersion,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )

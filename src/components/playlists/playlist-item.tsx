@@ -112,9 +112,9 @@ export function PlaylistItemRow({
             <Slider
               min={5}
               max={60}
-              value={item.display_duration_seconds}
+              value={[item.display_duration_seconds]}
               onValueChange={(val) =>
-                onDurationChange(item.id, val as number)
+                onDurationChange(item.id, val[0])
               }
               className="flex-1"
             />

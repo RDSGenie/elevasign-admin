@@ -29,6 +29,22 @@ export interface DashboardActivity {
   created_at: string;
 }
 
+export interface FleetHealth {
+  /** Latest heartbeat per screen – one entry per screen */
+  screens: {
+    id: string;
+    name: string;
+    is_online: boolean;
+    wifi_signal: number | null;
+    storage_free_mb: number | null;
+    storage_total_mb: number | null;
+  }[];
+  /** Aggregate totals */
+  totalStorageMb: number;
+  freeStorageMb: number;
+  avgWifiDbm: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
@@ -197,4 +213,74 @@ export async function getRecentActivity(
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )
     .slice(0, 8);
+}
+
+/**
+ * Fetch fleet-wide health: latest heartbeat per screen + aggregates.
+ */
+export async function getFleetHealth(
+  supabase: AnySupabaseClient
+): Promise<FleetHealth> {
+  // Get all screens
+  const { data: screens, error: screensError } = await supabase
+    .from("screens")
+    .select("id, name, is_online");
+  if (screensError) throw screensError;
+  if (!screens || screens.length === 0) {
+    return { screens: [], totalStorageMb: 0, freeStorageMb: 0, avgWifiDbm: null };
+  }
+
+  // Get latest heartbeat for each screen
+  const screenIds = screens.map((s: { id: string }) => s.id);
+  const { data: heartbeats, error: hbError } = await supabase
+    .from("device_heartbeats")
+    .select("screen_id, wifi_signal_dbm, free_storage_mb, total_storage_mb, created_at")
+    .in("screen_id", screenIds)
+    .order("created_at", { ascending: false });
+  if (hbError) throw hbError;
+
+  // Keep only the latest heartbeat per screen
+  const latestByScreen: Record<string, {
+    wifi_signal_dbm: number | null;
+    free_storage_mb: number | null;
+    total_storage_mb: number | null;
+  }> = {};
+  for (const hb of heartbeats ?? []) {
+    const row = hb as {
+      screen_id: string;
+      wifi_signal_dbm: number | null;
+      free_storage_mb: number | null;
+      total_storage_mb: number | null;
+    };
+    if (!latestByScreen[row.screen_id]) {
+      latestByScreen[row.screen_id] = {
+        wifi_signal_dbm: row.wifi_signal_dbm,
+        free_storage_mb: row.free_storage_mb,
+        total_storage_mb: row.total_storage_mb,
+      };
+    }
+  }
+
+  const enriched = screens.map((s: { id: string; name: string; is_online: boolean }) => {
+    const hb = latestByScreen[s.id];
+    return {
+      id: s.id,
+      name: s.name,
+      is_online: s.is_online,
+      wifi_signal: hb?.wifi_signal_dbm ?? null,
+      storage_free_mb: hb?.free_storage_mb ?? null,
+      storage_total_mb: hb?.total_storage_mb ?? null,
+    };
+  });
+
+  const withStorage = enriched.filter((s) => s.storage_total_mb !== null);
+  const totalStorageMb = withStorage.reduce((sum, s) => sum + (s.storage_total_mb ?? 0), 0);
+  const freeStorageMb = withStorage.reduce((sum, s) => sum + (s.storage_free_mb ?? 0), 0);
+
+  const withWifi = enriched.filter((s) => s.wifi_signal !== null);
+  const avgWifiDbm = withWifi.length > 0
+    ? Math.round(withWifi.reduce((sum, s) => sum + (s.wifi_signal ?? 0), 0) / withWifi.length)
+    : null;
+
+  return { screens: enriched, totalStorageMb, freeStorageMb, avgWifiDbm };
 }

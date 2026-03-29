@@ -11,6 +11,7 @@ import {
   Megaphone,
   Settings,
   LogOut,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/lib/hooks/use-user";
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/schedules", label: "Schedules", icon: Calendar },
   { href: "/screens", label: "Screens", icon: Monitor },
   { href: "/announcements", label: "Announcements", icon: Megaphone },
+  { href: "/analytics", label: "Proof of Play", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

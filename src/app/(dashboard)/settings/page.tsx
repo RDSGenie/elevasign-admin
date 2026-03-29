@@ -23,6 +23,8 @@ import {
   Loader2,
   Save,
   UserPlus,
+  Building2,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,12 +65,16 @@ import {
   getAllProfiles,
   updateUserRole,
   getSystemStats,
+  getBuildingSettings,
+  updateBuildingSettings,
   type UserProfile,
   type UserRole,
   type SystemStats,
+  type BuildingSettings,
 } from "@/lib/supabase/settings-queries";
 import { formatFileSize } from "@/types/media";
 import { BRAND } from "@/lib/constants";
+import type { StorageByType } from "@/lib/supabase/settings-queries";
 
 // ---------------------------------------------------------------------------
 // Default settings (stored in localStorage)
@@ -179,6 +185,16 @@ export default function SettingsPage() {
     enabled: !!user?.id,
   });
 
+  // Building branding
+  const {
+    data: buildingSettings,
+    isLoading: brandingLoading,
+  } = useQuery({
+    queryKey: ["building-settings"],
+    queryFn: () => getBuildingSettings(supabase),
+    enabled: !!user?.id,
+  });
+
   const isOwner = profile?.role === "owner";
 
   return (
@@ -211,13 +227,23 @@ export default function SettingsPage() {
         />
       )}
 
-      {/* 3. Default Settings */}
+      {/* 3. Building Branding (owner/editor) */}
+      {(isOwner || profile?.role === "editor") && (
+        <BrandingSection
+          settings={buildingSettings ?? null}
+          loading={brandingLoading}
+          supabase={supabase}
+          queryClient={queryClient}
+        />
+      )}
+
+      {/* 4. Default Settings */}
       <DefaultSettingsSection />
 
-      {/* 4. System Info */}
+      {/* 5. System Info */}
       <SystemInfoSection stats={systemStats} loading={statsLoading} />
 
-      {/* 5. Danger Zone */}
+      {/* 6. Danger Zone */}
       <DangerZoneSection />
     </div>
   );
@@ -458,6 +484,7 @@ function UserManagementSection({
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
   const [copied, setCopied] = useState(false);
 
   const updateRoleMutation = useMutation({
@@ -470,6 +497,31 @@ function UserManagementSection({
     onError: (error: Error) => {
       toast.error(`Failed to update role: ${error.message}`);
     },
+  });
+
+  const inviteMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-invite`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ email }),
+        }
+      );
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Failed to send invite");
+    },
+    onSuccess: () => {
+      toast.success("Invite sent! The user will receive a magic link by email.");
+      setInviteEmail("");
+      setInviteOpen(false);
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const registerUrl = typeof window !== "undefined"
@@ -524,38 +576,70 @@ function UserManagementSection({
             />
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Invite New Admin</DialogTitle>
+                <DialogTitle>Invite New User</DialogTitle>
                 <DialogDescription>
-                  Share this registration link with the person you want to invite
-                  to the admin panel. They will need to create an account using
-                  this link.
+                  Send a magic link directly to their email, or share the
+                  registration link manually.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-3 py-2">
-                <Label>Registration Link</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={registerUrl}
-                    readOnly
-                    className="bg-muted font-mono text-xs"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleCopyLink}
-                    className="shrink-0"
-                  >
-                    {copied ? (
-                      <Check className="size-4 text-emerald-500" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
+              <div className="space-y-4 py-2">
+                {/* Magic link invite */}
+                <div className="space-y-2">
+                  <Label>Send magic link invite</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      placeholder="colleague@example.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && inviteEmail)
+                          inviteMutation.mutate(inviteEmail);
+                      }}
+                    />
+                    <Button
+                      onClick={() => inviteMutation.mutate(inviteEmail)}
+                      disabled={!inviteEmail || inviteMutation.isPending}
+                      className="shrink-0"
+                    >
+                      {inviteMutation.isPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        "Send"
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    They&apos;ll receive an email with a one-click login link.
+                    New users start with the &quot;viewer&quot; role.
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  After they register, you can assign their role from this page.
-                  New users are assigned the &quot;viewer&quot; role by default.
-                </p>
+
+                {/* Manual link fallback */}
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">
+                    Or share the registration link
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={registerUrl}
+                      readOnly
+                      className="bg-muted font-mono text-xs"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleCopyLink}
+                      className="shrink-0"
+                    >
+                      {copied ? (
+                        <Check className="size-4 text-emerald-500" />
+                      ) : (
+                        <Copy className="size-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
               <DialogFooter showCloseButton />
             </DialogContent>
@@ -638,7 +722,154 @@ function UserManagementSection({
 }
 
 // ---------------------------------------------------------------------------
-// 3. Default Settings
+// 3. Building Branding
+// ---------------------------------------------------------------------------
+
+function BrandingSection({
+  settings,
+  loading,
+  supabase,
+  queryClient,
+}: {
+  settings: BuildingSettings | null;
+  loading: boolean;
+  supabase: ReturnType<typeof createClient>;
+  queryClient: ReturnType<typeof useQueryClient>;
+}) {
+  const [buildingName, setBuildingName] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [primaryColor, setPrimaryColor] = useState("#6366f1");
+
+  useEffect(() => {
+    if (settings) {
+      setBuildingName(settings.building_name ?? "");
+      setTagline(settings.tagline ?? "");
+      setPrimaryColor(settings.primary_color ?? "#6366f1");
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateBuildingSettings(supabase, {
+        building_name: buildingName.trim() || "My Building",
+        tagline: tagline.trim() || null,
+        primary_color: primaryColor,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["building-settings"] });
+      toast.success("Branding settings saved.");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to save: ${error.message}`);
+    },
+  });
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 className="size-5" />
+            Building Branding
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-48" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Building2 className="size-5" />
+          Building Branding
+        </CardTitle>
+        <CardDescription>
+          Customize the building name and theme shown on screens and widgets.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Building name */}
+        <div className="space-y-2">
+          <Label htmlFor="buildingName">Building Name</Label>
+          <Input
+            id="buildingName"
+            value={buildingName}
+            onChange={(e) => setBuildingName(e.target.value)}
+            placeholder="e.g. Torre Reforma"
+            maxLength={80}
+          />
+          <p className="text-xs text-muted-foreground">
+            Displayed in the clock widget and on pairing screens.
+          </p>
+        </div>
+
+        {/* Tagline */}
+        <div className="space-y-2">
+          <Label htmlFor="tagline">Tagline (optional)</Label>
+          <Input
+            id="tagline"
+            value={tagline}
+            onChange={(e) => setTagline(e.target.value)}
+            placeholder="e.g. Welcome, residents"
+            maxLength={120}
+          />
+        </div>
+
+        {/* Accent color */}
+        <div className="space-y-2">
+          <Label htmlFor="primaryColor" className="flex items-center gap-1.5">
+            <Palette className="size-3.5" />
+            Accent Color
+          </Label>
+          <div className="flex items-center gap-3">
+            <input
+              id="primaryColor"
+              type="color"
+              value={primaryColor}
+              onChange={(e) => setPrimaryColor(e.target.value)}
+              className="size-9 cursor-pointer rounded border border-input bg-background p-0.5"
+            />
+            <Input
+              value={primaryColor}
+              onChange={(e) => setPrimaryColor(e.target.value)}
+              className="w-32 font-mono text-sm"
+              maxLength={7}
+            />
+            <span
+              className="h-9 flex-1 rounded border"
+              style={{ backgroundColor: primaryColor }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Used for clock widget accent and branding elements in the player app.
+          </p>
+        </div>
+
+        <Button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          size="sm"
+        >
+          {saveMutation.isPending ? (
+            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+          ) : (
+            <Save className="mr-1.5 size-3.5" />
+          )}
+          Save Branding
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 4. Default Settings
 // ---------------------------------------------------------------------------
 
 function DefaultSettingsSection() {
@@ -796,8 +1027,45 @@ function DefaultSettingsSection() {
 }
 
 // ---------------------------------------------------------------------------
-// 4. System Info
+// 5. System Info
 // ---------------------------------------------------------------------------
+
+const TYPE_COLORS: Record<StorageByType["type"], string> = {
+  image: "bg-blue-500",
+  video: "bg-violet-500",
+  document: "bg-amber-500",
+  other: "bg-slate-400",
+};
+
+function StorageBreakdown({ storageByType, totalBytes }: { storageByType: StorageByType[]; totalBytes: number }) {
+  if (totalBytes === 0 || storageByType.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {/* Segmented bar */}
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+        {storageByType.map((t) => (
+          <div
+            key={t.type}
+            className={TYPE_COLORS[t.type]}
+            style={{ width: `${(t.bytes / totalBytes) * 100}%` }}
+          />
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {storageByType.map((t) => (
+          <div key={t.type} className="flex items-center gap-1.5">
+            <span className={`size-2 rounded-full ${TYPE_COLORS[t.type]}`} />
+            <span className="text-xs text-muted-foreground">
+              {t.label} ({formatFileSize(t.bytes)})
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function SystemInfoSection({
   stats,
@@ -817,11 +1085,6 @@ function SystemInfoSection({
           icon: Image,
           label: "Media Items",
           value: stats.totalMedia.toString(),
-        },
-        {
-          icon: HardDrive,
-          label: "Total Storage Used",
-          value: formatFileSize(stats.totalStorageBytes),
         },
         {
           icon: ListMusic,
@@ -875,7 +1138,32 @@ function SystemInfoSection({
 
             <Separator />
 
-            {/* Stats */}
+            {/* Storage usage */}
+            <div className="space-y-1.5 px-3 py-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="size-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Total Storage Used
+                  </span>
+                </div>
+                <span className="text-sm font-medium">
+                  {formatFileSize(stats?.totalStorageBytes ?? 0)}
+                </span>
+              </div>
+              {stats && stats.storageByType.length > 0 && (
+                <div className="pl-6">
+                  <StorageBreakdown
+                    storageByType={stats.storageByType}
+                    totalBytes={stats.totalStorageBytes}
+                  />
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Other stats */}
             {infoItems.map((item) => (
               <div
                 key={item.label}
@@ -898,7 +1186,7 @@ function SystemInfoSection({
 }
 
 // ---------------------------------------------------------------------------
-// 5. Danger Zone
+// 6. Danger Zone
 // ---------------------------------------------------------------------------
 
 function DangerZoneSection() {

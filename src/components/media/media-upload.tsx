@@ -103,7 +103,7 @@ export function MediaUpload({ onUploadComplete }: MediaUploadProps) {
       }
 
       // Create DB record
-      await createMediaItem(supabase, {
+      const newItem = await createMediaItem(supabase, {
         name: file.name,
         file_path: storagePath,
         file_type: file.type,
@@ -111,8 +111,31 @@ export function MediaUpload({ onUploadComplete }: MediaUploadProps) {
         width,
         height,
         duration_seconds: duration,
-        sha256_hash: hash,
+        sha256_hash: hash ?? "",
       });
+
+      // Notify server to bump content versions for screens that use this media
+      if (newItem?.id) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/media-upload-complete`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${session?.access_token}`,
+              },
+              body: JSON.stringify({
+                media_item_id: newItem.id,
+                sha256_hash: hash ?? undefined,
+              }),
+            }
+          );
+        } catch {
+          // Non-critical: version bump failure doesn't block the upload
+        }
+      }
 
       updateFileState(uploadFile.id, { status: "complete" });
       return uploadFile.id;
