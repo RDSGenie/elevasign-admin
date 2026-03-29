@@ -196,7 +196,7 @@ export default function ScreenDetailPage({
     mutationFn: async () => {
       const updates: Parameters<typeof updateScreen>[2] = {};
       if (editedName !== null) updates.name = editedName;
-      if (editedLocation !== undefined) updates.location = editedLocation;
+      if (editedLocation !== null) updates.location = editedLocation;
       if (editedOrientation !== null) updates.orientation = editedOrientation;
       if (editedLayout !== null) updates.layout_template = editedLayout;
       if (Object.keys(updates).length > 0) {
@@ -334,14 +334,14 @@ export default function ScreenDetailPage({
             </Button>
           )}
           <AlertDialog>
-            <AlertDialogTrigger>
-              <Button variant="outline" size="sm">
-                <Trash2
-                  className="size-3.5 text-destructive"
-                  data-icon="inline-start"
-                />
-                Delete
-              </Button>
+            <AlertDialogTrigger
+              render={<Button variant="outline" size="sm" />}
+            >
+              <Trash2
+                className="size-3.5 text-destructive"
+                data-icon="inline-start"
+              />
+              Delete
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
@@ -678,7 +678,7 @@ export default function ScreenDetailPage({
                         key={cmd.id}
                         className="flex items-center justify-between text-xs"
                       >
-                        <span className="font-mono">{cmd.command}</span>
+                        <span className="font-mono">{cmd.command_type}</span>
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <span
                             className={

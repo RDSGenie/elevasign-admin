@@ -49,7 +49,7 @@ export interface DeviceHeartbeat {
 export interface DeviceCommand {
   id: string;
   screen_id: string;
-  command: string;
+  command_type: string;
   payload: Record<string, unknown> | null;
   status: string;
   created_at: string;
