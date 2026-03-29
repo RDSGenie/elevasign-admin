@@ -77,7 +77,7 @@ const DATE_PRESETS = [
 export default function AnalyticsPage() {
   const supabase = createClient();
   const [days, setDays] = useState(7);
-  const [screenFilter, setScreenFilter] = useState<string>("all");
+  const [screenFilter, setScreenFilter] = useState("all");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
@@ -120,7 +120,7 @@ export default function AnalyticsPage() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data ?? []) as PlayLog[];
+      return (data ?? []) as unknown as PlayLog[];
     },
   });
 
@@ -190,7 +190,7 @@ export default function AnalyticsPage() {
           {/* Screen filter */}
           <Select
             value={screenFilter}
-            onValueChange={(v) => { setScreenFilter(v); setPage(0); }}
+            onValueChange={(v) => { setScreenFilter(v ?? "all"); setPage(0); }}
           >
             <SelectTrigger className="h-8 w-44 text-xs">
               <Monitor className="size-3.5 mr-1.5 shrink-0" />

@@ -114,7 +114,7 @@ export function PlaylistItemRow({
               max={60}
               value={[item.display_duration_seconds]}
               onValueChange={(val) =>
-                onDurationChange(item.id, val[0])
+                onDurationChange(item.id, Array.isArray(val) ? val[0] : val)
               }
               className="flex-1"
             />

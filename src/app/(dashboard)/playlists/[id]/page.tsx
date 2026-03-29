@@ -503,7 +503,7 @@ export default function PlaylistEditorPage({
                   step={50}
                   value={[effectiveTransitionDuration]}
                   onValueChange={(val) =>
-                    setTransitionDuration(val[0])
+                    setTransitionDuration(Array.isArray(val) ? val[0] : val)
                   }
                 />
               </div>
