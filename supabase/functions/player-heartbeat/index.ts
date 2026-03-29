@@ -94,6 +94,15 @@ Deno.serve(async (req) => {
       console.error('Error fetching commands:', commandsError)
     }
 
+    // Mark claimed commands as 'executing' to prevent duplicate delivery
+    if (commands && commands.length > 0) {
+      const commandIds = commands.map((c: { id: string }) => c.id)
+      await supabase
+        .from('device_commands')
+        .update({ status: 'executing' })
+        .in('id', commandIds)
+    }
+
     return new Response(
       JSON.stringify({ commands: commands ?? [] }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

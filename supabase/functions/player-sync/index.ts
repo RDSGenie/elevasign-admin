@@ -53,10 +53,13 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 2. Determine active playlist based on schedules
+    // 2. Determine active playlist based on schedules (all times in UTC)
     const now = new Date()
-    const currentDay = now.getDay() // 0=Sun .. 6=Sat
-    const currentTime = now.toTimeString().slice(0, 8) // HH:MM:SS
+    const currentDay = now.getUTCDay() === 0 ? 7 : now.getUTCDay() // 1=Mon..7=Sun
+    const h = String(now.getUTCHours()).padStart(2, '0')
+    const m = String(now.getUTCMinutes()).padStart(2, '0')
+    const s = String(now.getUTCSeconds()).padStart(2, '0')
+    const currentTime = `${h}:${m}:${s}` // HH:MM:SS in UTC
     const currentDate = now.toISOString().slice(0, 10) // YYYY-MM-DD
 
     const { data: schedules, error: schedulesError } = await supabase

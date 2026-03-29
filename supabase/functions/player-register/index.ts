@@ -62,11 +62,12 @@ Deno.serve(async (req) => {
     }
 
     // Check if pairing code has expired (10 minute window)
-    const createdAt = new Date(screen.created_at).getTime()
+    // Use updated_at, not created_at — updated_at refreshes when a new code is generated
+    const updatedAt = new Date(screen.updated_at).getTime()
     const now = Date.now()
     const tenMinutesMs = 10 * 60 * 1000
 
-    if (now - createdAt > tenMinutesMs) {
+    if (now - updatedAt > tenMinutesMs) {
       return new Response(
         JSON.stringify({ error: 'Pairing code has expired' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
