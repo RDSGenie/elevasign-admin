@@ -134,6 +134,7 @@ export default function ScreenDetailPage({
   const [editedName, setEditedName] = useState<string | null>(null);
   const [editedLocation, setEditedLocation] = useState<string | null>(null);
   const [editedOrientation, setEditedOrientation] = useState<"landscape" | "portrait" | null>(null);
+  const [editedDefaultPlaylist, setEditedDefaultPlaylist] = useState<string | null | undefined>(undefined);
   const [editedLayout, setEditedLayout] = useState<LayoutTemplate | null>(null);
   const [zoneAssignments, setZoneAssignments] = useState<
     Record<string, string | null>
@@ -198,6 +199,7 @@ export default function ScreenDetailPage({
       if (editedName !== null) updates.name = editedName;
       if (editedLocation !== null) updates.location = editedLocation;
       if (editedOrientation !== null) updates.orientation = editedOrientation;
+      if (editedDefaultPlaylist !== undefined) updates.default_playlist_id = editedDefaultPlaylist;
       if (editedLayout !== null) updates.layout_template = editedLayout;
       if (Object.keys(updates).length > 0) {
         await updateScreen(supabase, id, updates);
@@ -212,6 +214,7 @@ export default function ScreenDetailPage({
       setEditedName(null);
       setEditedLocation(null);
       setEditedOrientation(null);
+      setEditedDefaultPlaylist(undefined);
       setEditedLayout(null);
       setZonesChanged(false);
       toast.success("Screen saved.");
@@ -279,7 +282,7 @@ export default function ScreenDetailPage({
   }
 
   const hasChanges =
-    editedName !== null || editedLocation !== null || editedOrientation !== null || editedLayout !== null || zonesChanged;
+    editedName !== null || editedLocation !== null || editedOrientation !== null || editedDefaultPlaylist !== undefined || editedLayout !== null || zonesChanged;
   const latestHb = heartbeats[0] ?? null;
 
   return (
@@ -456,6 +459,31 @@ export default function ScreenDetailPage({
                   <Label className="text-xs text-muted-foreground">Status</Label>
                   <p className="mt-1.5 font-mono text-xs capitalize">{screen.status}</p>
                 </div>
+              </div>
+              {/* Default Playlist — shows content when no schedule is active */}
+              <div className="space-y-1.5 border-t pt-3">
+                <Label className="text-xs text-muted-foreground">Default Playlist</Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Plays when no schedule is active. Layout zones override this.
+                </p>
+                <Select
+                  value={(editedDefaultPlaylist !== undefined ? editedDefaultPlaylist : screen.default_playlist_id) ?? "none"}
+                  onValueChange={(v) => setEditedDefaultPlaylist(v === "none" ? null : v)}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="No default playlist" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <span className="text-muted-foreground">No default playlist</span>
+                    </SelectItem>
+                    {playlists.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               {/* Read-only device details */}
               <div className="grid grid-cols-2 gap-3 border-t pt-3 text-xs">

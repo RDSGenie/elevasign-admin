@@ -125,13 +125,51 @@ Deno.serve(async (req) => {
     // Use fallback if no active schedule found
     const resolvedSchedule = activeSchedule ?? fallbackSchedule
 
-    // 3. Get playlist items with media details
+    // 3. Resolve playlist ID with fallback cascade:
+    //    Schedule → Layout Zones (main zone) → Screen default_playlist_id
+    let resolvedPlaylistId: string | null = resolvedSchedule?.playlist_id ?? null
+    let resolvedPlaylistName: string | null = resolvedSchedule?.playlists?.name ?? null
+
+    // Fallback: check layout zones for a playlist assignment
+    if (!resolvedPlaylistId) {
+      const { data: zones } = await supabase
+        .from('layout_zones')
+        .select('playlist_id')
+        .eq('screen_id', screenId)
+        .not('playlist_id', 'is', null)
+        .order('z_index', { ascending: true })
+        .limit(1)
+
+      if (zones && zones.length > 0 && zones[0].playlist_id) {
+        resolvedPlaylistId = zones[0].playlist_id
+        // Fetch playlist name
+        const { data: pl } = await supabase
+          .from('playlists')
+          .select('name')
+          .eq('id', resolvedPlaylistId)
+          .maybeSingle()
+        resolvedPlaylistName = pl?.name ?? null
+      }
+    }
+
+    // Fallback: check screen's default_playlist_id
+    if (!resolvedPlaylistId && screen.default_playlist_id) {
+      resolvedPlaylistId = screen.default_playlist_id
+      const { data: pl } = await supabase
+        .from('playlists')
+        .select('name')
+        .eq('id', resolvedPlaylistId)
+        .maybeSingle()
+      resolvedPlaylistName = pl?.name ?? null
+    }
+
+    // 4. Get playlist items with media details
     let playlistData = null
-    if (resolvedSchedule?.playlist_id) {
+    if (resolvedPlaylistId) {
       const { data: playlistItems, error: itemsError } = await supabase
         .from('playlist_items')
         .select('*, media_items(*)')
-        .eq('playlist_id', resolvedSchedule.playlist_id)
+        .eq('playlist_id', resolvedPlaylistId)
         .eq('is_enabled', true)
         .order('sort_order', { ascending: true })
 
@@ -140,16 +178,15 @@ Deno.serve(async (req) => {
       }
 
       // Build signed URLs for media files
+      const supabaseStorage = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      )
+
       const items = []
       for (const item of playlistItems ?? []) {
         const media = item.media_items
         if (!media) continue
-
-        // Create signed URL for the file (valid for 1 hour)
-        const supabaseStorage = createClient(
-          Deno.env.get('SUPABASE_URL')!,
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-        )
 
         const { data: signedUrlData } = await supabaseStorage.storage
           .from('signage-media')
@@ -164,15 +201,14 @@ Deno.serve(async (req) => {
         })
       }
 
-      const playlist = resolvedSchedule.playlists
       playlistData = {
-        id: resolvedSchedule.playlist_id,
-        name: playlist?.name ?? null,
+        id: resolvedPlaylistId,
+        name: resolvedPlaylistName,
         items,
       }
     }
 
-    // 4. Get active announcements for this screen
+    // 5. Get active announcements for this screen
     const { data: announcements, error: announcementsError } = await supabase
       .from('announcements')
       .select('*')
@@ -190,7 +226,7 @@ Deno.serve(async (req) => {
       return a.target_screens.includes(screenId)
     })
 
-    // 5. Get layout zones for this screen
+    // 6. Get layout zones for this screen (for response — already queried above for fallback)
     const { data: layoutZones, error: zonesError } = await supabase
       .from('layout_zones')
       .select('*')
@@ -201,7 +237,7 @@ Deno.serve(async (req) => {
       console.error('Error fetching layout zones:', zonesError)
     }
 
-    // 6. Get latest content version number for this screen
+    // 7. Get latest content version number for this screen
     const { data: latestVersion } = await supabase
       .from('content_versions')
       .select('version_number')
@@ -212,7 +248,7 @@ Deno.serve(async (req) => {
 
     const contentVersion = latestVersion?.version_number ?? 0
 
-    // 7. Generate manifest hash
+    // 8. Generate manifest hash
     const manifestContent = JSON.stringify({
       playlist: playlistData,
       announcements: filteredAnnouncements,
@@ -234,7 +270,7 @@ Deno.serve(async (req) => {
       })
       .eq('id', screenId)
 
-    // 8. Return manifest
+    // 9. Return manifest
     return new Response(
       JSON.stringify({
         playlist: playlistData,

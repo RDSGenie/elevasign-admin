@@ -30,6 +30,7 @@ export interface Screen {
   last_heartbeat_at: string | null;
   is_online: boolean;
   status: string;
+  default_playlist_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,5 +71,6 @@ export interface UpdateScreenData {
   location?: string | null;
   orientation?: ScreenOrientation;
   layout_template?: LayoutTemplate;
+  default_playlist_id?: string | null;
   status?: string;
 }
