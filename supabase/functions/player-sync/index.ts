@@ -125,24 +125,27 @@ Deno.serve(async (req) => {
     // Use fallback if no active schedule found
     const resolvedSchedule = activeSchedule ?? fallbackSchedule
 
-    // 3. Resolve playlist ID with fallback cascade:
-    //    Schedule → Layout Zones (main zone) → Screen default_playlist_id
+    // 3. Get layout zones early (used for fallback + response + multi-zone)
+    const { data: layoutZones, error: zonesError } = await supabase
+      .from('layout_zones')
+      .select('*')
+      .eq('screen_id', screenId)
+      .order('z_index', { ascending: true })
+
+    if (zonesError) {
+      console.error('Error fetching layout zones:', zonesError)
+    }
+
+    // 4. Resolve playlist ID with fallback cascade:
+    //    Schedule → Layout Zones (first zone) → Screen default_playlist_id
     let resolvedPlaylistId: string | null = resolvedSchedule?.playlist_id ?? null
     let resolvedPlaylistName: string | null = resolvedSchedule?.playlists?.name ?? null
 
     // Fallback: check layout zones for a playlist assignment
-    if (!resolvedPlaylistId) {
-      const { data: zones } = await supabase
-        .from('layout_zones')
-        .select('playlist_id')
-        .eq('screen_id', screenId)
-        .not('playlist_id', 'is', null)
-        .order('z_index', { ascending: true })
-        .limit(1)
-
-      if (zones && zones.length > 0 && zones[0].playlist_id) {
-        resolvedPlaylistId = zones[0].playlist_id
-        // Fetch playlist name
+    if (!resolvedPlaylistId && layoutZones && layoutZones.length > 0) {
+      const zoneWithPlaylist = layoutZones.find((z: any) => z.playlist_id)
+      if (zoneWithPlaylist) {
+        resolvedPlaylistId = zoneWithPlaylist.playlist_id
         const { data: pl } = await supabase
           .from('playlists')
           .select('name')
@@ -208,7 +211,53 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Get active announcements for this screen
+    // 5. Build per-zone playlist data (for multi-zone layouts)
+    const zonePlaylistsMap: Record<string, { id: string; name: string | null; items: any[] }> = {}
+    if (layoutZones && layoutZones.length > 1) {
+      const supabaseStorage = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      )
+      for (const zone of layoutZones) {
+        if (!zone.playlist_id) continue
+        const { data: zoneItems } = await supabase
+          .from('playlist_items')
+          .select('*, media_items(*)')
+          .eq('playlist_id', zone.playlist_id)
+          .eq('is_enabled', true)
+          .order('sort_order', { ascending: true })
+
+        const items = []
+        for (const item of zoneItems ?? []) {
+          const media = item.media_items
+          if (!media) continue
+          const { data: signedUrlData } = await supabaseStorage.storage
+            .from('signage-media')
+            .createSignedUrl(media.file_path, 3600)
+          items.push({
+            media_id: media.id,
+            file_url: signedUrlData?.signedUrl ?? null,
+            file_type: media.file_type,
+            display_duration: item.display_duration_seconds,
+            sort_order: item.sort_order,
+          })
+        }
+
+        const { data: pl } = await supabase
+          .from('playlists')
+          .select('name')
+          .eq('id', zone.playlist_id)
+          .maybeSingle()
+
+        zonePlaylistsMap[zone.zone_name] = {
+          id: zone.playlist_id,
+          name: pl?.name ?? null,
+          items,
+        }
+      }
+    }
+
+    // 6. Get active announcements for this screen
     const { data: announcements, error: announcementsError } = await supabase
       .from('announcements')
       .select('*')
@@ -226,17 +275,6 @@ Deno.serve(async (req) => {
       return a.target_screens.includes(screenId)
     })
 
-    // 6. Get layout zones for this screen (for response — already queried above for fallback)
-    const { data: layoutZones, error: zonesError } = await supabase
-      .from('layout_zones')
-      .select('*')
-      .eq('screen_id', screenId)
-      .order('z_index', { ascending: true })
-
-    if (zonesError) {
-      console.error('Error fetching layout zones:', zonesError)
-    }
-
     // 7. Get latest content version number for this screen
     const { data: latestVersion } = await supabase
       .from('content_versions')
@@ -251,6 +289,7 @@ Deno.serve(async (req) => {
     // 8. Generate manifest hash
     const manifestContent = JSON.stringify({
       playlist: playlistData,
+      zone_playlists: zonePlaylistsMap,
       announcements: filteredAnnouncements,
       layout_zones: layoutZones ?? [],
     })
@@ -274,6 +313,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         playlist: playlistData,
+        zone_playlists: Object.keys(zonePlaylistsMap).length > 0 ? zonePlaylistsMap : null,
         announcements: filteredAnnouncements,
         layout_zones: layoutZones ?? [],
         manifest_hash: manifestHash,
